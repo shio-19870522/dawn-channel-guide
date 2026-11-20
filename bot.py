@@ -14,7 +14,7 @@ TITLE = "☁️ DAWN CLOUDY | CHANNEL GUIDE"
 refresh_task = None
 
 def groups(guild):
-    cats = [(c.id, c.name) for c in guild.categories]
+    cats = [(c.id, c.name) for c in guild.categories if c.name != "面談"]
     if any(isinstance(c, (discord.TextChannel, discord.VoiceChannel, discord.StageChannel, discord.ForumChannel)) and c.category_id is None for c in guild.channels):
         cats.append((0, "カテゴリーなし"))
     return cats

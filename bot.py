@@ -41,7 +41,7 @@ class CategoryMenu(discord.ui.Select):
         if "話す" in category_name:
             allowed_channel_names = ("ゆる作業", "自由")
         elif "見る" in category_name:
-            allowed_channel_names = ("おすすめグッズ",)
+            allowed_channel_names = ("新おすすめ",)
         channels = [
             ch for ch in interaction.guild.channels
             if isinstance(

@@ -38,7 +38,7 @@ class CategoryMenu(discord.ui.Select):
             return await interaction.response.send_message("このカテゴリーは削除されています。", ephemeral=True)
         category_name = names[cid]
         allowed_channel_names = (
-            {"ゆる作業", "自由"} if category_name == "話す" else None
+            {"ゆる作業", "自由"} if "話す" in category_name else None
         )
         channels = [
             ch for ch in interaction.guild.channels

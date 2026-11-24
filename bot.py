@@ -37,9 +37,11 @@ class CategoryMenu(discord.ui.Select):
         if cid not in names:
             return await interaction.response.send_message("このカテゴリーは削除されています。", ephemeral=True)
         category_name = names[cid]
-        allowed_channel_names = (
-            {"ゆる作業", "自由"} if "話す" in category_name else None
-        )
+        allowed_channel_names = None
+        if "話す" in category_name:
+            allowed_channel_names = {"ゆる作業", "自由"}
+        elif "見る" in category_name:
+            allowed_channel_names = {"おすすめグッズ"}
         channels = [
             ch for ch in interaction.guild.channels
             if isinstance(

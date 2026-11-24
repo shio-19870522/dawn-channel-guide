@@ -36,7 +36,28 @@ class CategoryMenu(discord.ui.Select):
         names = dict(groups(interaction.guild))
         if cid not in names:
             return await interaction.response.send_message("このカテゴリーは削除されています。", ephemeral=True)
-        channels = [ch for ch in interaction.guild.channels if isinstance(ch, (discord.TextChannel, discord.VoiceChannel, discord.StageChannel, discord.ForumChannel)) and (ch.category_id or 0) == cid and ch.permissions_for(interaction.user).view_channel]
+        category_name = names[cid]
+        allowed_channel_names = (
+            {"ゆる作業", "自由"} if category_name == "話す" else None
+        )
+        channels = [
+            ch for ch in interaction.guild.channels
+            if isinstance(
+                ch,
+                (
+                    discord.TextChannel,
+                    discord.VoiceChannel,
+                    discord.StageChannel,
+                    discord.ForumChannel,
+                ),
+            )
+            and (ch.category_id or 0) == cid
+            and ch.permissions_for(interaction.user).view_channel
+            and (
+                allowed_channel_names is None
+                or ch.name in allowed_channel_names
+            )
+        ]
         channels.sort(key=lambda ch: (ch.position, ch.id))
         if not channels:
             return await interaction.response.send_message("閲覧できるチャンネルはありません。", ephemeral=True)

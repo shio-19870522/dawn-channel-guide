@@ -45,23 +45,16 @@ def saved_description(channel_id):
         "SELECT description FROM channel_descriptions WHERE channel_id=?",
         (channel_id,),
     ).fetchone()
-    return row[0] if row else ""
+    return row[0] if row else None
 
 
 def save_description(channel_id, description):
-    description = description.strip()
-    if description:
-        description_db.execute(
-            "INSERT INTO channel_descriptions(channel_id, description) "
-            "VALUES (?, ?) ON CONFLICT(channel_id) "
-            "DO UPDATE SET description=excluded.description",
-            (channel_id, description),
-        )
-    else:
-        description_db.execute(
-            "DELETE FROM channel_descriptions WHERE channel_id=?",
-            (channel_id,),
-        )
+    description_db.execute(
+        "INSERT INTO channel_descriptions(channel_id, description) "
+        "VALUES (?, ?) ON CONFLICT(channel_id) "
+        "DO UPDATE SET description=excluded.description",
+        (channel_id, description.strip()),
+    )
     description_db.commit()
 
 
@@ -119,13 +112,20 @@ class CategoryMenu(discord.ui.Select):
         chunks = []
         current = ""
         for ch in channels:
-            description = (
-                saved_description(ch.id)
-                or getattr(ch, "topic", None)
-                or "説明はまだ登録されていません。"
-            ).replace("\n", " ").strip()[:150]
-            description = discord.utils.escape_mentions(description).replace("@", "@\u200b")
-            line = f"{ch.mention}\n{description}\n\n"
+            custom_description = saved_description(ch.id)
+            if custom_description == "":
+                line = f"{ch.mention}\n\n"
+            else:
+                description = (
+                    custom_description
+                    if custom_description is not None
+                    else (
+                        getattr(ch, "topic", None)
+                        or "説明はまだ登録されていません。"
+                    )
+                ).replace("\n", " ").strip()[:150]
+                description = discord.utils.escape_mentions(description).replace("@", "@\u200b")
+                line = f"{ch.mention}\n{description}\n\n"
             if len(current) + len(line) > 3500:
                 chunks.append(current)
                 current = ""
@@ -141,11 +141,9 @@ class DescriptionModal(discord.ui.Modal, title="チャンネル説明を編集")
     def __init__(self, channel):
         super().__init__(timeout=300)
         self.channel_id = channel.id
-        current = (
-            saved_description(channel.id)
-            or getattr(channel, "topic", None)
-            or ""
-        )
+        current = saved_description(channel.id)
+        if current is None:
+            current = getattr(channel, "topic", None) or ""
         self.description = discord.ui.TextInput(
             label="説明文",
             style=discord.TextStyle.paragraph,
@@ -196,7 +194,59 @@ class DescriptionChannelMenu(discord.ui.Select):
                 "チャンネルが見つかりません。メニューを開き直してください。",
                 ephemeral=True,
             )
-        await interaction.response.send_modal(DescriptionModal(channel))
+        await interaction.response.send_message(
+            f"{channel.mention} の説明をどうする？",
+            view=DescriptionActionView(channel),
+            ephemeral=True,
+            allowed_mentions=discord.AllowedMentions.none(),
+        )
+
+
+class EditSelectedDescriptionButton(discord.ui.Button):
+    def __init__(self, channel):
+        super().__init__(
+            label="説明文を編集",
+            style=discord.ButtonStyle.primary,
+        )
+        self.channel = channel
+
+    async def callback(self, interaction):
+        if not can_edit_descriptions(interaction):
+            return await interaction.response.send_message(
+                "説明文を編集できるのは、しおちゃんとサーバーオーナーだけです。",
+                ephemeral=True,
+            )
+        await interaction.response.send_modal(
+            DescriptionModal(self.channel)
+        )
+
+
+class DeleteSelectedDescriptionButton(discord.ui.Button):
+    def __init__(self, channel):
+        super().__init__(
+            label="説明文を削除",
+            style=discord.ButtonStyle.danger,
+        )
+        self.channel_id = channel.id
+
+    async def callback(self, interaction):
+        if not can_edit_descriptions(interaction):
+            return await interaction.response.send_message(
+                "説明文を編集できるのは、しおちゃんとサーバーオーナーだけです。",
+                ephemeral=True,
+            )
+        save_description(self.channel_id, "")
+        await interaction.response.send_message(
+            "説明文を削除して、一覧から説明欄を非表示にしたで。",
+            ephemeral=True,
+        )
+
+
+class DescriptionActionView(discord.ui.View):
+    def __init__(self, channel):
+        super().__init__(timeout=180)
+        self.add_item(EditSelectedDescriptionButton(channel))
+        self.add_item(DeleteSelectedDescriptionButton(channel))
 
 
 class DescriptionChannelView(discord.ui.View):

@@ -22,10 +22,20 @@ description_db.execute(
     "CREATE TABLE IF NOT EXISTS channel_descriptions "
     "(channel_id INTEGER PRIMARY KEY, description TEXT NOT NULL)"
 )
+description_db.execute(
+    "CREATE TABLE IF NOT EXISTS hidden_guide_channels "
+    "(channel_id INTEGER PRIMARY KEY)"
+)
 description_db.commit()
 
 def groups(guild):
-    cats = [(c.id, c.name) for c in guild.categories if c.name != "面談" and "hidden" not in c.name.casefold()]
+    cats = [
+        (category.id, category.name)
+        for category in guild.categories
+        if category.name != "面談"
+        and "hidden" not in category.name.casefold()
+        and "知る" not in category.name
+    ]
     if any(isinstance(c, (discord.TextChannel, discord.VoiceChannel, discord.StageChannel, discord.ForumChannel)) and c.category_id is None for c in guild.channels):
         cats.append((0, "カテゴリーなし"))
     return cats
@@ -58,7 +68,28 @@ def save_description(channel_id, description):
     description_db.commit()
 
 
-def channels_for_category(guild, category_id, member):
+def channel_hidden(channel_id):
+    return description_db.execute(
+        "SELECT 1 FROM hidden_guide_channels WHERE channel_id=?",
+        (channel_id,),
+    ).fetchone() is not None
+
+
+def set_channel_hidden(channel_id, hidden):
+    if hidden:
+        description_db.execute(
+            "INSERT OR IGNORE INTO hidden_guide_channels(channel_id) VALUES (?)",
+            (channel_id,),
+        )
+    else:
+        description_db.execute(
+            "DELETE FROM hidden_guide_channels WHERE channel_id=?",
+            (channel_id,),
+        )
+    description_db.commit()
+
+
+def channels_for_category(guild, category_id, member, include_hidden=False):
     category_names = dict(groups(guild))
     category_name = category_names.get(category_id, "")
     allowed_channel_names = None
@@ -79,6 +110,7 @@ def channels_for_category(guild, category_id, member):
         )
         and (channel.category_id or 0) == category_id
         and channel.permissions_for(member).view_channel
+        and (include_hidden or not channel_hidden(channel.id))
         and (
             allowed_channel_names is None
             or any(name in channel.name for name in allowed_channel_names)
@@ -242,11 +274,40 @@ class DeleteSelectedDescriptionButton(discord.ui.Button):
         )
 
 
+class GuideVisibilityButton(discord.ui.Button):
+    def __init__(self, channel):
+        self.channel_id = channel.id
+        self.hidden = channel_hidden(channel.id)
+        super().__init__(
+            label="ガイドに戻す" if self.hidden else "ガイドから外す",
+            style=(
+                discord.ButtonStyle.success
+                if self.hidden
+                else discord.ButtonStyle.secondary
+            ),
+        )
+
+    async def callback(self, interaction):
+        if not can_edit_descriptions(interaction):
+            return await interaction.response.send_message(
+                "ガイドの表示を変更できるのは、しおちゃんとサーバーオーナーだけです。",
+                ephemeral=True,
+            )
+        set_channel_hidden(self.channel_id, not self.hidden)
+        message = (
+            "チャンネルをガイドに戻したで。"
+            if self.hidden
+            else "チャンネルをガイドから外したで。Discord上のチャンネルは残ってるで。"
+        )
+        await interaction.response.send_message(message, ephemeral=True)
+
+
 class DescriptionActionView(discord.ui.View):
     def __init__(self, channel):
         super().__init__(timeout=180)
         self.add_item(EditSelectedDescriptionButton(channel))
         self.add_item(DeleteSelectedDescriptionButton(channel))
+        self.add_item(GuideVisibilityButton(channel))
 
 
 class DescriptionChannelView(discord.ui.View):
@@ -274,7 +335,10 @@ class DescriptionCategoryMenu(discord.ui.Select):
             )
         category_id = int(self.values[0])
         channels = channels_for_category(
-            interaction.guild, category_id, interaction.user
+            interaction.guild,
+            category_id,
+            interaction.user,
+            include_hidden=True,
         )
         if not channels:
             return await interaction.response.send_message(

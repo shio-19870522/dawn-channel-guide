@@ -39,9 +39,9 @@ class CategoryMenu(discord.ui.Select):
         category_name = names[cid]
         allowed_channel_names = None
         if "話す" in category_name:
-            allowed_channel_names = {"ゆる作業", "自由"}
+            allowed_channel_names = ("ゆる作業", "自由")
         elif "見る" in category_name:
-            allowed_channel_names = {"おすすめグッズ"}
+            allowed_channel_names = ("おすすめグッズ",)
         channels = [
             ch for ch in interaction.guild.channels
             if isinstance(
@@ -57,7 +57,7 @@ class CategoryMenu(discord.ui.Select):
             and ch.permissions_for(interaction.user).view_channel
             and (
                 allowed_channel_names is None
-                or ch.name in allowed_channel_names
+                or any(name in ch.name for name in allowed_channel_names)
             )
         ]
         channels.sort(key=lambda ch: (ch.position, ch.id))
